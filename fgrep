@@ -1,5 +1,6 @@
 # ~/.zshrc
 
+
 function fgrep() {
   local use_rg=false
   local use_fd=false
@@ -8,19 +9,22 @@ function fgrep() {
   if command -v rg &> /dev/null; then
     use_rg=true
   else
-    echo "注意: ripgrep (rg) は grep より高速で便利な検索ツールです。"
+    echo "注意: ripgrep (rg) がインストールされていません。大規模なディレクトリの検索やバイナリファイルの検索には時間がかかる可能性があります。"
+    echo "ripgrep のインストール方法については、https://github.com/BurntSushi/ripgrep を参照してください。"
   fi
 
   if command -v fd &> /dev/null; then
     use_fd=true
   else
-    echo "注意: fd は find より高速で使いやすい検索ツールです。"
+    echo "注意: fd がインストールされていません。大規模なディレクトリの検索には時間がかかる可能性があります。"
+    echo "fd のインストール方法については、https://github.com/sharkdp/fd を参照してください。"
   fi
 
   if command -v bat &> /dev/null; then
     use_bat=true
   else
-    echo "注意: bat は cat より高機能なファイルビューアです。"
+    echo "注意: bat がインストールされていません。出力のシンタックスハイライトが利用できません。"
+    echo "bat のインストール方法については、https://github.com/sharkdp/bat を参照してください。"
   fi
 
   local dir="$1"
@@ -39,16 +43,29 @@ function fgrep() {
     echo "  -h, --help              ヘルプを表示します"
     echo "  -o, --output <file>     検索結果を指定されたファイルに保存します"
     echo "  -f, --format <format>   出力ファイルの形式を指定します（txt, md, jsonc, yaml）"
-    echo "  -r, --regex             検索パターンを正規表現として扱います"
+    echo "  -r, --regex             検索パターンを正規表現として扱います（ripgrep または grep の正規表現構文）"
     echo "  -t, --type <type>       指定されたファイルタイプのみを検索します（text, binary）"
     echo "  -i, --ignore-case       大文字と小文字を区別しない検索を行います"
     echo "  -s, --sort <option>     検索結果をソートします（name, line, content）"
     echo ""
     echo "使用例:"
-    echo "  fgrep ~/projects 'function' '*.sh'         # ~/projects 内の .sh ファイルから 'function' を検索"
-    echo "  fgrep -r -i ~/projects '^#include' '*.c'   # ~/projects 内の .c ファイルから '^#include' を正規表現・大文字小文字区別なしで検索"
-    echo "  fgrep -t text ~/documents 'TODO'           # ~/documents 内のテキストファイルから 'TODO' を検索"
-    echo "  fgrep -f jsonc -o result.jsonc ~/api '200' # ~/api 内のファイルから '200' を検索し、result.jsonc に JSONC 形式で保存"
+    echo "  # 現在のディレクトリを確認する"
+    echo "  pwd"
+    echo ""
+    echo "  # ホームディレクトリ (~) 内の .txt ファイルから 'hello' を検索"
+    echo "  fgrep ~ 'hello' '*.txt'"
+    echo ""
+    echo "  # カレントディレクトリ (.) 内の .sh ファイルから 'function' を検索"
+    echo "  fgrep . 'function' '*.sh'"
+    echo ""
+    echo "  # デスクトップディレクトリ内の .c ファイルから '^#include' を正規表現・大文字小文字区別なしで検索"
+    echo "  fgrep -r -i ~/Desktop '^#include' '*.c'"
+    echo ""
+    echo "  # ドキュメントディレクトリ内のテキストファイルから 'TODO' を検索"
+    echo "  fgrep -t text ~/Documents 'TODO'"
+    echo ""
+    echo "  # ダウンロードディレクトリ内のファイルから '200' を検索し、result.jsonc に JSONC 形式で保存"
+    echo "  fgrep -f jsonc -o result.jsonc ~/Downloads '200'"
     return 0
   fi
 
@@ -96,7 +113,7 @@ function fgrep() {
     return 1
   fi
 
-  local timestamp=$(date +"%m%d_%Hh%Mm%Ss")
+  local timestamp=$(date +"%Y%m%d_%H%M%S")
   local default_output_file="${pattern}_${file_pattern}_${timestamp}.${output_format}"
 
   if [[ -z "$output_file" ]]; then
@@ -109,7 +126,7 @@ function fgrep() {
   if [[ "$file_type" == "text" ]]; then
     fd_cmd+=" --type file"
   elif [[ "$file_type" == "binary" ]]; then
-    fd_cmd+=" --type file --exec file {} \; | grep -v text | cut -d: -f1"
+    fd_cmd+=" --type file"
   fi
 
   local grep_cmd="grep -n --color=always"
@@ -179,6 +196,12 @@ function fgrep() {
     done < "$temp_file"
   else
     echo "一致するものが見つかりませんでした。"
+  fi
+
+  if [[ ! -f "$output_file" ]]; then
+    echo "エラー: 出力ファイル '$output_file' の書き込みに失敗しました。書き込み権限を確認してください。"
+    rm "$temp_file"
+    return 1
   fi
 
   rm "$temp_file"

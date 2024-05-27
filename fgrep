@@ -1,0 +1,187 @@
+# ~/.zshrc
+
+function fgrep() {
+  local use_rg=false
+  local use_fd=false
+  local use_bat=false
+
+  if command -v rg &> /dev/null; then
+    use_rg=true
+  else
+    echo "注意: ripgrep (rg) は grep より高速で便利な検索ツールです。"
+  fi
+
+  if command -v fd &> /dev/null; then
+    use_fd=true
+  else
+    echo "注意: fd は find より高速で使いやすい検索ツールです。"
+  fi
+
+  if command -v bat &> /dev/null; then
+    use_bat=true
+  else
+    echo "注意: bat は cat より高機能なファイルビューアです。"
+  fi
+
+  local dir="$1"
+  local pattern="$2"
+  local file_pattern="${3:-*}"
+  local output_file=""
+  local output_format="txt"
+  local use_regex=false
+  local file_type=""
+  local ignore_case=false
+  local sort_option=""
+
+  if [[ "$1" == "-h" || "$1" == "--help" ]]; then
+    echo "使用方法: fgrep [オプション] <ディレクトリ> <検索パターン> [ファイルパターン]"
+    echo "オプション:"
+    echo "  -h, --help              ヘルプを表示します"
+    echo "  -o, --output <file>     検索結果を指定されたファイルに保存します"
+    echo "  -f, --format <format>   出力ファイルの形式を指定します（txt, md, jsonc, yaml）"
+    echo "  -r, --regex             検索パターンを正規表現として扱います"
+    echo "  -t, --type <type>       指定されたファイルタイプのみを検索します（text, binary）"
+    echo "  -i, --ignore-case       大文字と小文字を区別しない検索を行います"
+    echo "  -s, --sort <option>     検索結果をソートします（name, line, content）"
+    echo ""
+    echo "使用例:"
+    echo "  fgrep ~/projects 'function' '*.sh'         # ~/projects 内の .sh ファイルから 'function' を検索"
+    echo "  fgrep -r -i ~/projects '^#include' '*.c'   # ~/projects 内の .c ファイルから '^#include' を正規表現・大文字小文字区別なしで検索"
+    echo "  fgrep -t text ~/documents 'TODO'           # ~/documents 内のテキストファイルから 'TODO' を検索"
+    echo "  fgrep -f jsonc -o result.jsonc ~/api '200' # ~/api 内のファイルから '200' を検索し、result.jsonc に JSONC 形式で保存"
+    return 0
+  fi
+
+  while [[ "$#" -gt 0 ]]; do
+    case "$1" in
+      -o|--output)
+        output_file="$2"
+        shift 2
+        ;;
+      -f|--format)
+        output_format="$2"
+        shift 2
+        ;;
+      -r|--regex)
+        use_regex=true
+        shift
+        ;;
+      -t|--type)
+        file_type="$2"
+        shift 2
+        ;;
+      -i|--ignore-case)
+        ignore_case=true
+        shift
+        ;;
+      -s|--sort)
+        sort_option="$2"
+        shift 2
+        ;;
+      *)
+        break
+        ;;
+    esac
+  done
+
+  if [[ -z "$dir" || -z "$pattern" ]]; then
+    echo "エラー: ディレクトリと検索パターンを指定してください。"
+    echo "使用方法: fgrep [オプション] <ディレクトリ> <検索パターン> [ファイルパターン]"
+    echo "オプションの詳細は fgrep --help を実行してください。"
+    return 1
+  fi
+
+  if [[ ! -d "$dir" ]]; then
+    echo "エラー: ディレクトリ '$dir' が存在しません。"
+    return 1
+  fi
+
+  local timestamp=$(date +"%m%d_%Hh%Mm%Ss")
+  local default_output_file="${pattern}_${file_pattern}_${timestamp}.${output_format}"
+
+  if [[ -z "$output_file" ]]; then
+    output_file="$default_output_file"
+  fi
+
+  local find_cmd="find \"$dir\" -type f -name \"$file_pattern\""
+  local fd_cmd="fd \"$file_pattern\" \"$dir\""
+
+  if [[ "$file_type" == "text" ]]; then
+    fd_cmd+=" --type file"
+  elif [[ "$file_type" == "binary" ]]; then
+    fd_cmd+=" --type file --exec file {} \; | grep -v text | cut -d: -f1"
+  fi
+
+  local grep_cmd="grep -n --color=always"
+  
+  if [[ "$use_regex" == true ]]; then
+    grep_cmd+=" -E"
+  fi
+  
+  if [[ "$ignore_case" == true ]]; then
+    grep_cmd+=" -i"
+  fi
+
+  local rg_cmd="rg -n --color=always --sort path"
+
+  if [[ "$use_regex" == true ]]; then
+    rg_cmd+=" -E"
+  fi
+  
+  if [[ "$ignore_case" == true ]]; then
+    rg_cmd+=" -i"
+  fi
+
+  if [[ "$file_type" == "text" ]]; then
+    rg_cmd+=" --type text"
+  elif [[ "$file_type" == "binary" ]]; then
+    rg_cmd+=" --type-not text"
+  fi
+
+  local sort_cmd=""
+  case "$sort_option" in
+    name)
+      sort_cmd="sort -t: -k1,1"
+      ;;
+    line)
+      sort_cmd="sort -t: -k2,2n"
+      ;;
+    content)
+      sort_cmd="sort -t: -k3"
+      ;;
+  esac
+
+  echo "検索中..."
+
+  local temp_file=$(mktemp)
+  if [[ "$use_rg" == true && "$use_fd" == true ]]; then
+    eval "$fd_cmd" | xargs -I{} sh -c "rg $rg_cmd '$pattern' {}" | eval "$sort_cmd" > "$temp_file"
+  elif [[ "$use_fd" == true ]]; then
+    eval "$fd_cmd" | xargs -I{} sh -c "grep $grep_cmd '$pattern' {}" | eval "$sort_cmd" > "$temp_file"
+  elif [[ "$use_rg" == true ]]; then
+    eval "$find_cmd -print0" | xargs -0 -I{} sh -c "rg $rg_cmd '$pattern' {}" | eval "$sort_cmd" > "$temp_file"
+  else
+    eval "$find_cmd -print0" | xargs -0 -I{} sh -c "grep $grep_cmd '$pattern' {}" | eval "$sort_cmd" > "$temp_file"
+  fi
+
+  if [[ -s "$temp_file" ]]; then
+    if [[ "$use_bat" == true ]]; then
+      bat --style=numbers,header --color=always --language="${output_format}" "$temp_file" > "$output_file"
+    else
+      cat "$temp_file" > "$output_file"
+    fi
+    echo "検索結果を $output_file に保存しました。"
+    echo "以下は検索結果の概要です："
+    while IFS= read -r line; do
+      file=$(echo "$line" | cut -d':' -f1)
+      line_number=$(echo "$line" | cut -d':' -f2)
+      echo "# $file の $line_number 行目に \`$pattern\` があります。"
+    done < "$temp_file"
+  else
+    echo "一致するものが見つかりませんでした。"
+  fi
+
+  rm "$temp_file"
+}
+
+alias fgrep="fgrep"

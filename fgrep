@@ -1,6 +1,5 @@
 # ~/.zshrc
 
-
 function fgrep() {
   local use_rg=false
   local use_fd=false
